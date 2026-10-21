@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hw2-code-review-workflow"
+version = "1.0.0"
+description = "多 Agent 代码审查工作流：编码 → 审查 → 修复（软件工程实践 Homework 2）"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "刘浩天", email = "934813156@qq.com" }]
+keywords = ["agent", "workflow", "orchestration", "code-review", "se2026"]
+#: 编排器本身零第三方依赖：状态、总线、报告、流程图全部标准库实现
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+code-review-workflow = "workflow.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["workflow*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"

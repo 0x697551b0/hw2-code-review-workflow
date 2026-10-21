@@ -1,0 +1,53 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+wheelhouse/
+
+# ---- 虚拟环境 ----
+.venv/
+venv/
+env/
+ENV/
+
+# ---- 测试与工具缓存 ----
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.testtmp/
+.tox/
+
+# ---- 密钥：**绝对不要提交** ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- 运行产物与临时验证产物 ----
+runs/
+reports/
+worktree/
+worktree-*/
+recheck/
+.agent_tmp/
+job.json
+out.json
+req.json
+resp.json
+
+# ---- 编辑器 / 系统 ----
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
