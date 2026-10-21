@@ -40,6 +40,9 @@ worktree-*/
 recheck/
 .agent_tmp/
 job.json
+fix.json
+review.json
+report.json
 out.json
 req.json
 resp.json
