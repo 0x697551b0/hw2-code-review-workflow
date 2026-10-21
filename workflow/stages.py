@@ -1,7 +1,6 @@
-"""
-具体流程：编码 → 审查 → 修复（含条件分支、循环与并行 fan-out）。
+"""具体流程：编码 → 审查 → 修复，中间有条件分支、循环和并行 fan-out。
 
-这就是作业要求的"2-3 个 Agent 协作完成一个完整流程"。整条流程被表达成一棵节点树：
+整条流程就是一棵节点树：
 
     pipeline
     ├── 0:prepare            准备目录、读取需求
@@ -15,13 +14,11 @@
     ├── 3:final-recheck      条件分支：最后一次动作是修复则补一次复审
     └── 4:wrap-up            汇总开放问题、写运行结论
 
-协作方式（两种都用上了，各有不可替代的作用）：
-
-- **消息传递**（:mod:`workflow.bus`）：``code.ready`` / ``review.completed`` /
-  ``gate.evaluated`` / ``fix.applied``。修复阶段通过**订阅** ``review.completed`` 拿到
-  发现清单，它不直接读别人的中间变量 —— 于是"谁关心什么"变成了显式声明。
-- **共享状态**（:mod:`workflow.state`）：需求、代码清单、每轮门禁结论。消息表达"发生了什么"，
-  状态表达"现在是什么样"，断点续跑只需要恢复状态。
+两种协作机制都用了。消息（:mod:`workflow.bus`）走 ``code.ready`` /
+``review.completed`` / ``gate.evaluated`` / ``fix.applied``，修复阶段是订阅
+``review.completed`` 拿到发现清单的，不去读别人的中间变量。状态（:mod:`workflow.state`）
+放需求、代码清单和每轮门禁结论。消息说"发生了什么"，状态说"现在是什么样"，resume
+只要恢复状态就够了。
 """
 
 from __future__ import annotations
@@ -47,7 +44,7 @@ from workflow.models import RoundSummary, StageReport
 from workflow.nodes import BranchNode, FunctionalNode, LoopNode, Node, NodeResult, SequenceNode
 from workflow.protocol import FindingContract, count_blocking, count_by_severity, dumps, is_blocking
 
-#: 健康分权重（与审查 Agent 一致；合并不需要它，因为分片各自算好再取最小值）
+#: 严重级别从重到轻，合并分片时按它排序、取最严重的一个
 _RISK_ORDER: tuple[str, ...] = ("critical", "high", "medium", "low", "info")
 
 
@@ -164,17 +161,13 @@ class CodingStage(Node):
 
 # 审查阶段（含并行 fan-out）
 class ReviewStage(Node):
-    """
-    调用审查 Agent。目标文件多于 1 个时**按文件并行 fan-out**，再确定性合并。
+    """调用审查 Agent。目标文件超过一个时按文件并行 fan-out，再确定性合并。
 
-    为什么在编排器里做 fan-out，而不是全交给审查 Agent 内部的线程池：
+    fan-out 放在编排器而不是审查 Agent 内部的线程池，是为了拿到每个文件各自的报告、
+    失败时能指出是哪个文件审崩了，也让并行成为工作流层的能力（以后加个文档 Agent 也
+    一样）。前提是并行子任务没有副作用，审查只读代码，正好成立。
 
-    - 编排器能因此拿到"每个文件各自的报告"，失败时能精确指出是哪个文件审崩了；
-    - 让"并行"成为工作流层的能力，任何 Agent 都能享受（将来加"文档 Agent"也一样）；
-    - 承认并行子任务**无副作用**这条硬约束，正好把审查"只读代码"的性质用起来。
-
-    代价是要自己合并结果。合并规则写死在 :func:`merge_reviews` 里，并且是纯函数，
-    因此可以单测 —— 不能靠"看起来对"来保证合并正确。
+    代价是合并得自己写。规则在 :func:`merge_reviews` 里，是纯函数，可以单测。
     """
 
     def __init__(self, name: str = "review", *, label: str = "review") -> None:
@@ -275,6 +268,7 @@ class ReviewStage(Node):
         reports: Path,
         blocking: list[str],
     ) -> dict[str, Any]:
+        # XXX: 4 是照审查 Agent 的默认并行度抄的，两边其实没联动
         workers = min(4, len(targets))
         ctx.debug(
             "review.fanout",
@@ -376,12 +370,10 @@ class GateStage(Node):
 
 # 修复阶段
 class FixStage(Node):
-    """
-    调用修复 Agent。发现清单**通过消息总线订阅获得**，而不是直接读别人的中间变量。
+    """调用修复 Agent。发现清单是从消息总线订阅来的，不去读别人的中间变量。
 
-    这是本流程里"Agent 协作"最具体的一处体现：修复 Agent 并不被"传入"参数，而是
-    订阅 ``review.completed``；编排器只负责把消息发出来。将来如果新增一个"修复结果
-    归档 Agent"，它同样订阅 ``fix.applied`` 即可，不需要修改本阶段。
+    修复 Agent 不是被"传入"参数，而是订阅 ``review.completed``，编排器只管把消息发出来。
+    以后再加一个归档修复结果的 Agent，它订阅 ``fix.applied`` 就行，这里不用动。
     """
 
     def __init__(self, name: str = "fix", *, inbox: Inbox | None = None) -> None:
@@ -644,12 +636,10 @@ def build_pipeline(*, max_rounds: int, review_inbox: Inbox | None = None) -> Nod
 
 
 def _current_round(ctx: RunContext) -> int:
-    """
-    从共享状态取"现在是第几轮"。
+    """从共享状态取"现在是第几轮"。
 
-    为什么不直接用 ``ctx.round``：循环结束后回到父上下文时，``ctx.round`` 又变回 0，
-    而收尾复审仍需知道"刚才跑到第几轮"。把轮次放进共享状态，是唯一同时满足
-    "跨节点可见"与"resume 可恢复"的做法。
+    不用 ``ctx.round`` 是因为循环结束回到父上下文时它就变回 0 了，而收尾复审还得知道刚
+    才跑到第几轮。放进共享状态才能既跨节点可见、又跟着 resume 一起恢复。
     """
     try:
         return int(ctx.state.get("current_round", ctx.round) or ctx.round or 0)
@@ -661,17 +651,12 @@ def _current_round(ctx: RunContext) -> int:
 def merge_reviews(
     payloads: Sequence[dict[str, Any]], *, blocking: Sequence[str] = ("critical", "high")
 ) -> dict[str, Any]:
-    """
-    合并多个分片的审查结果。**纯函数**，因此可以直接单测。
+    """合并多个分片的审查结果。纯函数，可以直接单测。
 
-    合并规则（写死在这里，不靠"看起来对"）：
-
-    - ``findings``：按 ``finding_id`` 去重后按严重级别排序；
-    - ``counts`` / ``blocking`` / ``total`` / ``fixable`` / ``needs_human``：由合并后的
-      清单重新计算，**不取各分片之和** —— 分片可能因为边界情况重复报同一处；
-    - ``score``：取各分片的**最小值**（分片各自按全量权重算分，相加没有意义）；
-    - ``overall_risk``：取最严重的那一个；
-    - ``passed``：任一阻断即不通过。
+    findings 按 ``finding_id`` 去重再按严重级别排序；counts / blocking / total / fixable /
+    needs_human 都从合并后的清单重算，不取各分片之和，因为分片在边界上可能重复报同一处；
+    score 取最小值（各分片都是按全量权重算的分，相加没意义）；overall_risk 取最严重的那
+    个；有一条阻断就算不通过。
     """
     if not payloads:
         return {

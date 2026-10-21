@@ -1,21 +1,13 @@
-"""
-Agent 注册表：发现、装配、调用三个 Agent。
+"""Agent 注册表：发现、装配、调用三个 Agent。
 
-三个仓库被 clone 到同一目录是最常见的交付形态，因此发现逻辑的第一优先级就是
-"在附近找"：
+三个仓库 clone 到同一个目录是最常见的交付形态，所以先看 ``--agents-home``，再看
+``HW2_AGENTS_HOME``，最后在当前目录、本仓库以及它们的上级和直接子目录里找含
+``<pkg>/__init__.py`` 的那一层。找到之后只把该层插进 ``sys.path``，不安装也不改环境，
+退出就失效。
 
-1. ``--agents-home`` 显式指定；
-2. ``HW2_AGENTS_HOME`` 环境变量；
-3. 当前目录、本仓库、以及它们的上级目录 / 直接子目录里，含 ``<pkg>/__init__.py`` 的那一层。
-
-找到之后只把该层插进 ``sys.path``，**不安装、不改环境**，退出即失效。
-
-调用有两种方式：
-
-- ``inproc``：进程内直接 ``AgentClass(config).handle(request)``。默认。
-- ``subprocess``：起一个 ``python -m <pkg>.worker``，用 stdin/stdout 做单次 JSON 往返。
-  隔离性更好（Agent 崩了不会带走编排器），也演示了"契约是 JSON 而不是 Python 对象"
-  这个设计的好处 —— 同一条流水线，换个传输方式就能跑在别的容器里。
+调用有两种方式。``inproc`` 是默认的，进程内直接 ``AgentClass(config).handle(request)``；
+``subprocess`` 起一个 ``python -m <pkg>.worker`` 走 stdin/stdout 做单次 JSON 往返，
+隔离性好一些。后者也顺带说明契约本身就是 JSON 数据，换个传输方式就能跑到别的容器里。
 """
 
 from __future__ import annotations
@@ -54,6 +46,7 @@ AGENT_LABELS: dict[str, str] = {
 ENV_AGENTS_HOME = "HW2_AGENTS_HOME"
 
 #: 向上搜索的最大层数
+# 注意：5 层够用了，仓库放得太深就搜不到，得靠 --agents-home
 _MAX_ANCESTORS = 5
 
 
@@ -191,7 +184,7 @@ class AgentHandle:
 
 
 class AgentRegistry:
-    """三个 Agent 的集合。未发现的 Agent 记在 ``missing`` 里，而不是直接崩。"""
+    """三个 Agent 的集合。没发现到的 Agent 记在 ``missing`` 里，不直接崩。"""
 
     def __init__(self) -> None:
         self.handles: dict[str, AgentHandle] = {}

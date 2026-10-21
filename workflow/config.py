@@ -1,10 +1,7 @@
-"""
-编排器配置。环境变量前缀 ``WF_``（Workflow）。
+"""编排器配置。环境变量前缀 ``WF_``。
 
-设计要点：**Agent 的私有配置由 Agent 自己解释**。编排器只知道"给编码 Agent 传
-``{"engine": "offline", "profile": "realistic"}``"这样的键值对，不关心这些键的含义。
-这样新增一个 Agent、或给现有 Agent 加参数，编排器一行都不用改 —— 这是"架构可扩展"
-落到配置上的样子。
+Agent 的私有配置由 Agent 自己解释。编排器只管把 ``{"engine": "offline", ...}`` 这样的
+键值对递过去，不关心键是什么意思，所以给 Agent 加参数时这边不用改。
 """
 
 from __future__ import annotations
@@ -20,7 +17,7 @@ from workflow.protocol import DEFAULT_BLOCKING, SEVERITY_ORDER
 ENV_PREFIX = "WF_"
 
 #: Agent 出错的处置策略
-#: - ``abort``：立刻中止整个流程（默认，最安全：不知道结果就不假装成功）
+#: - ``abort``：立刻中止整个流程（默认。不知道结果就不假装成功）
 #: - ``continue``：记录失败并继续（适合"审查失败但仍想拿到代码"这类场景）
 ERROR_POLICIES: tuple[str, ...] = ("abort", "continue")
 

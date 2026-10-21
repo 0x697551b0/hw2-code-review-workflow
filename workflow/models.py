@@ -1,9 +1,7 @@
-"""
-工作流自有的领域模型：阶段记录、门禁结论、运行汇总。
+"""工作流自有的领域模型：阶段记录、门禁结论、运行汇总。
 
-Agent 契约（``protocol.py``）只描述"一次请求/响应"，而工作流还需要描述"整条流程
-跑到哪了、每段花了多久、门禁为什么这么判"。两者分开定义，是因为它们的读者不同：
-契约是给 Agent 看的，这些是给人看的（报告、日志、CLI 输出）。
+``protocol.py`` 里的契约只描述一次请求/响应，这里描述整条流程跑到哪了、哪段花了多久、
+门禁凭什么这么判。分开是因为读者不同：契约给 Agent 看，这些给人和报告看。
 """
 
 from __future__ import annotations
@@ -34,7 +32,7 @@ OUTCOME_ABORTED = "aborted"
 
 @dataclass
 class StageReport:
-    """一个阶段的执行记录。这是"执行日志与状态追踪"要求落到数据结构上的样子。"""
+    """一个阶段的执行记录。"""
 
     name: str
     node: str = ""
@@ -66,7 +64,7 @@ class StageReport:
 
 @dataclass
 class GateResult:
-    """质量门禁结论。**每个字段都可解释**，不允许出现"pass/fail 但不知道为什么"。"""
+    """质量门禁结论。每个字段都带着原因，不允许只给一个 pass/fail。"""
 
     passed: bool = True
     blocking: tuple[str, ...] = DEFAULT_BLOCKING

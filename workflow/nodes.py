@@ -1,24 +1,8 @@
-"""
-流程控制原语：顺序 / 条件分支 / 循环 / 并行。
+"""流程控制节点。
 
-作业只强制要求"顺序执行"，但真实流程几乎立刻需要另外三种，所以这里把它们做成
-**可组合的节点**而不是写死的 if/for：
-
-- :class:`SequenceNode` —— 顺序执行，任一失败按策略中止；
-- :class:`BranchNode` —— 条件分支，条件是一个读共享状态的纯函数；
-- :class:`LoopNode` —— 有上限的循环，带收敛判定；
-- :class:`ParallelNode` —— 并行执行无副作用子节点（fan-out）。
-
-每个节点都遵循同一条契约：
-
-1. 执行前 ``state.is_done(qualified_name)`` 为真则跳过（这是 resume 的实现基础）；
-2. 执行后把自身限定名写入 ``state.completed`` 并存档；
-3. 失败时抛 :class:`~workflow.errors.NodeFailed`，由上层按 ``on_error`` 决定怎么处理。
-
-关于 :class:`ParallelNode` 的一条**硬约束**：并行子节点不得写共享状态。并发写共享
-状态需要锁、需要定序、需要在失败时回滚，MVP 阶段不值得。所以这里要求子节点"只返回
-结果"，由并行节点在汇合后**确定性合并**（按子节点定义的顺序）。这也是为什么审查 Agent
-的并行是按文件 fan-out 而不是按阶段并行 —— 每个分片只产出一份只读结果。
+Sequence / Branch / Loop / Parallel 四种，可以嵌套成一棵树。
+断点续跑、失败处理这些公共逻辑统一在 Node.execute 里，
+子类只管实现自己的 run()。
 """
 
 from __future__ import annotations
@@ -84,11 +68,9 @@ class Node(ABC):
 
     # 模板方法
     def execute(self, ctx: RunContext) -> NodeResult:
-        """
-        统一的执行外壳：跳过判定 → 执行 → 记完成 → 存档。
+        """执行外壳：跳过判定 → 执行 → 记完成 → 存档。
 
-        把这段逻辑放基类而不是每个节点各写一遍，是因为 resume 的正确性依赖它**没有
-        遗漏**：只要漏掉一处标记，断点续跑就会出现"跳过了但状态没写"的静默错误。
+        搁在基类是因为 resume 全靠它，漏掉一处标记就会出现"跳过了但状态没写"的错误。
         """
         qid = ctx.path or self.name
         if ctx.resumable and ctx.state.is_done(qid):
@@ -167,11 +149,9 @@ class SequenceNode(Node):
 
 
 class BranchNode(Node):
-    """
-    条件分支：``condition(ctx)`` 为真走 ``then``，否则走 ``else_``。
+    """条件分支：``condition(ctx)`` 为真走 ``then``，否则走 ``else_``。
 
-    条件函数必须是**只读**的（只看共享状态），否则 resume 时重放条件会产生不同结果，
-    断点续跑就不再可靠。这条约束写在文档里，也由测试覆盖（分支条件被调用两次时结果一致）。
+    条件函数只能读共享状态。要是它两次调用给出不同结果，resume 重放分支就会走到另一边去。
     """
 
     def __init__(
@@ -214,11 +194,10 @@ class BranchNode(Node):
 
 
 class LoopNode(Node):
-    """
-    有上限的循环，直到 ``until(ctx)`` 为真或达到 ``max_rounds``。
+    """有上限的循环，直到 ``until(ctx)`` 为真或者跑满 ``max_rounds``。
 
-    "达到上限但没收敛"是**正常结果**，不是异常：真实项目里经常是"修完了还能自动修的，
-    剩下的必须人来判断"。所以循环退出原因会写进返回值，报告里如实说明。
+    跑满上限不算异常，真实项目里也常有"能自动修的都修了，剩下的得人来判断"。所以退出
+    原因会写进返回值，报告照实写。
     """
 
     def __init__(
@@ -247,8 +226,8 @@ class LoopNode(Node):
         for iteration in range(start, self.max_rounds + 1):
             ctx.state.set_cursor(ctx.path, iteration - 1)
             ctx.round = iteration
-            # 轮次同时写进共享状态：循环之外的节点（例如收尾复审）也要知道"现在是第几轮"。
-            # 只靠上下文传递会漏 —— 循环结束回到父上下文时 round 又变回 0。
+            # 轮次也写进共享状态：循环之外的节点（收尾复审）同样要知道现在第几轮。
+            # 光靠上下文传不行，循环结束回到父上下文时 round 又变回 0。
             ctx.state["current_round"] = iteration
             ctx.outcome.diagnostics["round"] = iteration
             body_ctx = ctx.child(f"#{iteration}")
@@ -279,11 +258,10 @@ class LoopNode(Node):
 
 
 class ParallelNode(Node):
-    """
-    并行执行无副作用子节点，然后**按定义顺序**合并结果。
+    """并行执行无副作用的子节点，然后按定义顺序合并结果。
 
-    强调"按定义顺序合并"：并发完成的顺序不确定，如果按完成顺序合并，同样的输入会
-    产出不同的报告 —— 那会让测试、diff、报告全部失去可比性。
+    并发完成的先后是不确定的，要是按完成顺序合并，同样的输入会产出不一样的报告，测试和
+    diff 就没法比了。所以合并顺序跟子节点的定义顺序走。
     """
 
     def __init__(self, name: str, children: Sequence[Node], *, max_workers: int = 4) -> None:
@@ -334,10 +312,9 @@ class ParallelNode(Node):
 
 
 class FunctionalNode(Node):
-    """
-    用函数实现的叶子节点（内联逻辑，不必为每个小步骤建类）。
+    """用函数实现的叶子节点，小步骤就不必单独建类了。
 
-    ``action`` 可以做任何事（包括改共享状态），返回 :class:`NodeResult` 或字符串。
+    ``action`` 可以改共享状态，返回 :class:`NodeResult` 或者字符串。
     """
 
     def __init__(self, name: str, action: Callable[[RunContext], NodeResult | str], *, summary: str = "") -> None:

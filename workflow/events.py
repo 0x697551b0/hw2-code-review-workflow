@@ -1,16 +1,9 @@
-"""
-事件日志：把"流程里发生了什么"写成可回放的 JSON Lines。
+"""事件日志：把"流程里发生了什么"写成可回放的 JSON Lines。
 
-为什么是 JSONL 而不是普通日志文本：
-
-- 每条事件是一个独立 JSON 对象，一行一条，**不需要解析器**就能被 ``jq`` / pandas
-  直接读，也不需要整文件加载（日志可能很大）；
-- 写入即持久：中途崩溃时已经落盘的行依然可读，这让"出错后复盘"成为可能；
-- 同一份事件流既能喂给人看（终端 trace），也能喂给报告生成器画时间线。
-
-设计上把"记录"与"渲染"分开：:class:`EventLog` 只负责写，:class:`ConsoleListener`
-只负责把事件变成一行可读文字。这样想加一个 HTML 时间线、或者想接 OpenTelemetry，
-都不需要动记录逻辑。
+一行一个独立的 JSON 对象，不需要解析器，``jq`` 或 pandas 直接就能读，也不用整文件加载。
+写入即持久，中途崩了已经落盘的行还在，能拿来复盘。记录和渲染是分开的：:class:`EventLog`
+只负责写，:class:`ConsoleListener` 只负责把事件变成一行可读文字，以后想加个 HTML 时间线
+或者接 OpenTelemetry 都不用动记录逻辑。
 """
 
 from __future__ import annotations
@@ -74,10 +67,9 @@ class Event:
 
 
 class EventLog:
-    """
-    事件记录器。
+    """事件记录器。
 
-    ``path`` 为 None 时只保留在内存里（测试与单元用法）；给出路径时一边追加写盘。
+    为 None 时只留在内存里（测试用）；给了路径就一边追加写盘。
     """
 
     def __init__(self, path: str | Path | None = None, *, append: bool = False) -> None:
@@ -85,13 +77,13 @@ class EventLog:
         self.events: list[Event] = []
         self._seq = 0
         self._listeners: list["EventListener"] = []
-        #: 并行节点会同时写事件（见 ParallelNode / 审查 fan-out），
-        #: 没有锁时序号可能重复、JSONL 行可能交错 —— 一个只在并行路径下才复现的 bug
+        # 并行节点会同时写事件，没锁的话序号会重复、JSONL 的行还会交错，
+        # 这种毛病只在并行路径下才复现
         self._lock = threading.Lock()
-        #: 首次写入前先清空文件（新运行）；续跑时改为追加并回读已有序号
+        #: 首次写入前要不要清空文件（新运行为 True，续跑为 False）
         self._needs_truncate = self.path is not None and not append
-        # 关键：这里**不创建目录**。编排器先按新 run_id 建好事件日志，随后 resume 会把
-        # 运行目录改绑到存档所在目录；若此处就 mkdir，就会凭空多出一个空运行目录。
+        # 注意这里不建目录。编排器先按新 run_id 建好事件日志，随后 resume 会把运行目录
+        # 改绑到存档所在目录；此处要是 mkdir 了，就会凭空多出一个空运行目录。
         if self.path is not None and append:
             self._load_existing()
 
@@ -130,8 +122,7 @@ class EventLog:
         round: int = 0,
         **data: Any,
     ) -> Event:
-        # 序号递增也放进锁里：并行节点会同时写事件，不加锁时序号可能重复，
-        # 而事件序号是 replay 与测试断言的基础
+        # 并行节点会同时写事件，序号自增也得进锁，不然会重号
         with self._lock:
             self._seq += 1
             seq = self._seq
@@ -204,7 +195,7 @@ class EventListener:
 class ConsoleListener(EventListener):
     """把事件实时打印到终端（``--trace`` 打开的视图）。"""
 
-    #: 缩进层级：按 node 路径里的层级数缩进，让嵌套结构一眼可读
+    #: 每种事件在控制台上配的符号，没列到的用 ·
     _ICONS: dict[str, str] = {
         EVENT_RUN_START: "▶",
         EVENT_RUN_END: "■",

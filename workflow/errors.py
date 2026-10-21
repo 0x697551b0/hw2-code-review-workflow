@@ -1,13 +1,9 @@
 """编排器异常体系。
 
-按"谁来负责"分类，而不是按"哪一层抛的"：
-
-- :class:`WorkflowConfigError` / :class:`AgentNotFound` —— **环境问题**，用户要装/要配；
-- :class:`NodeFailed` —— **单节点失败**，编排器按错误策略处理（重试 / 降级 / 中止）；
-- :class:`CheckpointError` —— **存档问题**，影响 resume；
-- :class:`AbortWorkflow` —— 由节点主动中止整个流程（例如编码阶段失败且无法降级）。
-
-把"环境问题"和"运行失败"分开，是因为它们的处置完全不同：前者重试一万次也没用。
+按"谁来负责"分，不按"哪一层抛的"分：:class:`WorkflowConfigError` 和
+:class:`AgentNotFound` 是环境问题，用户得装或得配；:class:`NodeFailed` 是单节点失败，
+编排器按错误策略重试或降级；:class:`CheckpointError` 影响 resume；由
+:class:`AbortWorkflow` 主动叫停。环境问题重试一万次也没用，所以要和运行失败分开。
 """
 
 from __future__ import annotations

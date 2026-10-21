@@ -1,20 +1,11 @@
-"""
-消息总线：Agent 之间**显式**的消息传递通道。
+"""消息总线：Agent 之间的显式消息传递。
 
-为什么在"顺序流水线"里还要一个消息总线？因为只有共享状态的话，Agent 之间的耦合是
-隐式的 —— 修复 Agent 读到什么，取决于它被别人在什么时候写了什么，读代码根本看不出来。
-显式的消息让协作关系变成可声明、可观测、可替换的东西：
+只有共享状态的时候，修复 Agent 读到什么取决于别人在什么时候写了什么，光读代码看不
+出来。改成显式发布/订阅之后，"谁关心什么"是可以声明的东西，加一个 Agent 就是多一个
+订阅者。
 
-- 审查 Agent 只管 ``publish("review.completed", ...)``，它不知道谁在听；
-- 修复 Agent 用 ``subscribe("review.completed", ...)`` 声明"我对审查结论感兴趣"；
-- 编排器在中间转发，并顺手把每条消息记进事件日志与消息历史。
-
-于是"新增一个 Agent"变成"多一个订阅者"，而不是"改动别人的代码" —— 这正是作业里
-"可扩展性"这一项要考察的东西。
-
-实现上刻意保持**同步、无队列**：MVP 阶段流程是顺序的，异步反而会引入"消息在被写信
-之前就被读"的时序问题。总线把消息完整留存（``history``），因此将来要换成异步队列，
-只需替换投递实现，订阅方代码不动。
+实现是同步、无队列的：MVP 阶段流程本身就顺序执行，上异步反而会带出"消息在被写之前就
+被读"的时序问题。历史都留在 ``history`` 里，将来想换异步队列只要换投递实现。
 """
 
 from __future__ import annotations
@@ -142,9 +133,8 @@ class MessageBus:
 
         delivered = 0
         for subscribed_recipient, handler in handlers:
-            # 广播消息人人都收；定向消息只给"订阅了广播"或"订阅了自己"的接收者。
-            # 这里曾经写反过（把广播当定向），结果是定向订阅收不到广播消息 ——
-            # 一个"看起来订阅上了但永远收不到"的静默错误，靠测试才抓得到。
+            # 广播人人都收；定向消息只送给订阅了广播或者就订阅了自己的接收者。
+            # 这里以前写反过，定向订阅永远收不到广播消息，测试才抓出来。
             if recipient != BROADCAST and subscribed_recipient not in (BROADCAST, recipient):
                 continue
             try:
@@ -189,11 +179,9 @@ class MessageBus:
         return [message.to_dict() for message in self.history]
 
     def restore(self, transcript: list[dict[str, Any]]) -> int:
-        """
-        从存档恢复消息历史。返回恢复的条数。
+        """从存档恢复消息历史，返回恢复的条数。
 
-        断点续跑需要它：总线历史不在"待恢复的业务状态"里，恢复后如果不重建，报告中的
-        "Agent 消息传递"一节会变成空白 —— 而那一节恰恰是"Agent 协作"最直接的证据。
+        总线历史不在业务状态里，resume 之后不重建的话，报告里"Agent 消息传递"那节就是空的。
         """
         restored = 0
         max_index = 0
@@ -231,11 +219,10 @@ class MessageBus:
 
 
 class Inbox:
-    """
-    订阅者的收件箱：把总线上的消息收集成可查询的集合。
+    """订阅者的收件箱。
 
-    用途是让"订阅方"不必自己维护状态：声明 ``Inbox`` 之后，``latest(topic)`` 就总能
-    拿到最新一条，而读取时机（订阅回调里立刻读，还是 run 的时候再读）互不影响。
+    订阅方不用自己维护状态：声明 ``Inbox`` 之后 ``latest(topic)`` 总能拿到最新一条，
+    在订阅回调里马上读、还是等 run 的时候再读，互不影响。
     """
 
     def __init__(self, bus: MessageBus, *, recipient: str) -> None:

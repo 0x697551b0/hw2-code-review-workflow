@@ -1,9 +1,7 @@
-"""编排器（runner.py）的测试 —— 用伪 Agent 驱动，不依赖那三个真实仓库。
+"""编排器（runner.py）的测试，用伪 Agent 驱动，不依赖那三个真实仓库。
 
-为什么必须这么做：如果编排测试直接依赖真实 Agent，那么"编排逻辑对不对"这个问题
-就会被"隔壁仓库今天改了什么"污染。测试应当能精确定位失败原因，而不是一片红。
-
-真实三件套的协同在 ``test_e2e.py`` 里单独测，并在缺失时明确跳过。
+直接依赖真实 Agent 的话，"编排逻辑对不对"会被"隔壁仓库今天改了什么"带偏，测试也就没法
+定位失败原因，只会一片红。真实三件套的协同在 ``test_e2e.py`` 里单独测，缺的时候明确跳过。
 """
 
 from __future__ import annotations
@@ -167,13 +165,11 @@ def test_resume_missing_checkpoint_raises() -> None:
 
 
 def test_resume_preserves_observability() -> None:
-    """
-    回归测试：续跑必须保留**事件日志、消息历史、阶段记录**，且不新建运行目录。
+    """回归测试：续跑必须保留事件日志、消息历史、阶段记录，而且不新建运行目录。
 
-    这三条曾经同时是坏的：`EventLog` 在 `__init__` 里就按新 run_id 建好了文件和目录，
-    resume 只改了 `run_dir` 却没重绑它 —— 结果是"续跑的事件写进另一个空目录"，
-    而总线消息与阶段记录压根不在存档里，续跑后报告的两节直接变空。对一个以"执行日志
-    与状态追踪"为卖点的项目来说，这几乎等于把卖点弄没了。
+    这三样曾经同时是坏的。EventLog 在 __init__ 里就按新 run_id 建好了文件和目录，resume
+    只改了 run_dir 没重绑它，于是续跑的事件写进了另一个空目录；总线消息和阶段记录压根不在
+    存档里，续跑之后报告对应的两节就直接空了。
     """
     with tempdir() as tmp:
         first = Orchestrator(_config(tmp), registry=scripted_registry())
@@ -204,12 +200,11 @@ def test_resume_preserves_observability() -> None:
 
 
 def test_message_digest_counts_total_from_counts() -> None:
-    """
-    回归测试：消息摘要里的"命中 N 条"不能恒为 0。
+    """回归测试：消息摘要里的"命中 N 条"不能恒为 0。
 
-    早期实现直接取 `body["total"]`，而 `review.completed` 的消息体里没有这个字段，
-    于是报告第 5 节永远显示"命中 0 条"——分布和阻断数都是对的，只有这个总数错，
-    这种"部分正确"的错误最容易被漏看。
+    早期实现直接取 body["total"]，但 review.completed 的消息体里没有这个字段，于是报告第
+    5 节永远显示"命中 0 条"。分布和阻断数都是对的，只有这个总数错，这种只错一处的毛病最
+    容易被漏看。
     """
     from workflow.reporting import _message_digest
 

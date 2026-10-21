@@ -1,10 +1,8 @@
 """测试辅助：临时目录、伪 Agent、断言小工具。
 
-编排器的单元测试**不能依赖那三个真实仓库**：否则"编排逻辑是否正确"这件事会被
-"隔壁仓库今天改了没有"污染，测试也就失去了定位能力。所以这里用 :class:`FakeHandle`
-提供一个可编排的假 Agent，只实现契约要求的 ``send``。
-
-真实 Agent 只在 ``test_e2e.py`` 里出场，并在找不到时明确跳过。
+编排器的单元测试不能依赖那三个真实仓库，不然"编排逻辑对不对"会被"隔壁仓库今天改没改"
+带偏，测试也就没了定位能力。所以这里用 :class:`FakeHandle` 造一个可编排的假 Agent，只
+实现契约要求的 ``send``。真实 Agent 只在 ``test_e2e.py`` 里出场，找不到就跳过。
 """
 
 from __future__ import annotations
@@ -157,13 +155,11 @@ def scripted_registry(
     fix_applied: int = 3,
     files: int = 1,
 ) -> FakeRegistry:
-    """
-    构造一个"审查结果可控"的假 Agent 三件套。
+    """造一套"审查结果可控"的假 Agent。
 
-    ``findings_per_round``：第 N 次审查返回的发现清单。用它可以精确地驱动
-    "未通过门禁 → 修复 → 复审通过"这条路径。
-    ``files``：假编码 Agent 写出几个源文件。≥2 时会触发审查阶段的**并行 fan-out**，
-    用来验证分片合并逻辑。
+    ``findings_per_round``：第 N 次审查返回的发现清单，用它精确驱动"门禁没过 → 修复 →
+    复审通过"这条路径。``files``：假编码 Agent 写出几个源文件，≥2 时会走审查阶段的并行
+    fan-out，用来验证分片合并。
     """
     rounds = findings_per_round or [
         [finding("CG106", "high", 10), finding("CG203", "high", 20)],
@@ -176,8 +172,8 @@ def scripted_registry(
         index = min(counter["review"], len(rounds) - 1)
         counter["review"] += 1
         target = Path(str((request.payload or {}).get("target") or "")).name or "mod.py"
-        # 分片的发现要归到各自文件上，否则合并时会按 finding_id 去重成一条 ——
-        # 那是**正确的合并行为**，只是夹具里得让它们真的不同
+        # 分片的发现得各自归到目标文件上，不然合并时会按 finding_id 去重成一条。
+        # 去重本身是对的，只是夹具得让它们真的不一样
         items = [
             {**item, "file": target, "finding_id": f"{item['finding_id']}@{target}"}
             for item in rounds[index]
@@ -202,12 +198,10 @@ def scripted_registry(
         }
 
     def coding_response(request: Any, call_no: int) -> dict:
-        """
-        假的编码 Agent：**真的把源文件写出来**。
+        """假的编码 Agent，会真的把源文件写出来。
 
-        审查阶段会扫描工作目录里的源码，如果假 Agent 只返回 JSON 而不落盘，流程会在
-        "没有可审查的文件"处中止 —— 那样测到的就不是编排逻辑了。所以夹具必须把副作用
-        也模拟出来。
+        审查阶段要扫工作目录里的源码，假 Agent 只返回 JSON 不落盘的话，流程会卡在"没有
+        可审查的文件"那儿中止，测到的就不是编排逻辑了。所以副作用也得模拟。
         """
         out_dir = Path(str((request.payload or {}).get("out_dir") or "."))
         out_dir.mkdir(parents=True, exist_ok=True)

@@ -1,9 +1,6 @@
-"""
-code-review-workflow —— 多 Agent 代码审查工作流。
+"""多 Agent 代码审查工作流：编码 → 审查 → 修复。
 
-Homework 2「代码审查流程」方向：**编码 → 审查 → 修复**。
-
-三个 Agent 各自是独立仓库，本仓库只做编排：
+三个 Agent 各在独立仓库里，本仓库只负责编排：
 
 - 编码 Agent：<https://github.com/0x697551b0/hw2-coding-agent>
 - 审查 Agent：<https://github.com/0x697551b0/hw2-review-agent>（复用 Homework 1 的 codeguard）

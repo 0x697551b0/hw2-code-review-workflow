@@ -1,18 +1,13 @@
-"""
-共享状态：流程的唯一事实来源（single source of truth）。
+"""共享状态：流程里唯一的事实来源。
 
-两种数据在这里汇合：
+两类数据都放这儿。``data`` 是业务状态：需求、代码目录、每轮审查结论、每轮修复结果、
+门禁结论，报告和最终判断都从这儿取。``completed`` / ``cursors`` 是控制状态：哪些节点
+跑完了、循环到第几轮，resume 完全依赖它。
 
-1. **领域数据**（``data``）：需求、代码目录、每轮审查结论、每轮修复结果、门禁结论。
-   这些是"业务状态"，报告与最终判断都从这里取。
-2. **执行状态**（``completed`` / ``cursors``）：哪些节点已经跑完、循环跑到第几轮。
-   这些是"控制状态"，``resume`` 完全依赖它。
-
-为什么把两者放在同一个存档里：断点续跑要求"业务状态与执行进度必须一致"。分成两个文件
-就会出现"进度说跑完了、业务数据还没落盘"的不一致，恢复后行为不可预测。
-
-存档格式刻意用**扁平的 JSON**（不用 pickle）：可读、可 diff、可手工修改、跨版本安全。
-pickle 存档在生产系统里是反模式 —— 它把"读一个数据文件"变成了"执行任意代码"。
+两者存在同一个存档里，因为断点续跑要求业务状态和执行进度一致，拆成两个文件就会冒出
+"进度说跑完了、数据还没落盘"的情况，恢复之后行为没法预测。格式是扁平的 JSON 不用
+pickle：可读、可 diff、能手工改、跨版本安全；pickle 存档等于把读一个数据文件变成执行任意
+代码。
 """
 
 from __future__ import annotations
@@ -85,15 +80,11 @@ class Checkpoint:
 
 
 class SharedState(MutableMapping[str, Any]):
-    """
-    带存档能力的共享状态。
+    """带存档的共享状态。
 
-    实现 ``MutableMapping`` 是为了让它用起来就像 dict（``state["gate"]`` 直接读写），
-    但额外提供：
-
-    - **点号路径访问**：``state.get_path("gate.passed")``，报告里少写一堆 ``.get().get()``；
-    - **节点完成标记**：``mark_done(qid)`` / ``is_done(qid)``，撑起 resume；
-    - **存档**：``save()`` / ``load()``。
+    实现了 ``MutableMapping``，用起来就是个 dict（``state["gate"]`` 直接读写），另外
+    加了点号路径访问、节点完成标记和 ``save()`` / ``load()``。点号路径是给报告用的，
+    少写一长串 ``.get().get()``；完成标记撑起 resume。
     """
 
     def __init__(
@@ -220,16 +211,12 @@ class SharedState(MutableMapping[str, Any]):
         )
 
     def save(self, path: str | Path | None = None, *, force: bool = False) -> Path | None:
-        """
-        写存档。返回写入路径；无路径且未绑定则返回 None。
+        """写存档，返回写入路径；没给路径又没绑定的话返回 None。
 
-        **必须可并发调用**：并行节点里每个分片都会在完成时触发一次存档，多个线程可能
-        同时进来。两处保护缺一不可：
-
-        - ``_lock``：同一进程内的写互斥；
-        - 临时文件名带线程/进程标识：不同线程不会抢同一个 ``.tmp``。曾经用固定
-          ``state.json.tmp``，在 Windows 上直接 ``Permission denied`` —— 一个只在并行
-          路径下才复现的 bug。
+        必须能并发调用：并行分片完成时各自都会触发一次存档，多线程可能同时进来。锁管
+        进程内的互斥，临时文件名里带 pid 和线程号，不然大家抢同一个 ``.tmp``；以前用
+        固定的 ``state.json.tmp``，在 Windows 上直接 Permission denied，这个 bug 也只在
+        并行路径下才复现。
         """
         target = Path(path) if path else self._path
         if target is None:
@@ -275,9 +262,9 @@ class SharedState(MutableMapping[str, Any]):
 
     # 快照
     def snapshot(self) -> dict[str, Any]:
-        """只读快照（交给 Agent 当 ``shared`` 上下文用）。
+        """只读快照，交给 Agent 当 ``shared`` 上下文用。
 
-        做深拷贝：Agent 拿到的是"当时的样子"，它后续怎么改都不会影响编排器。
+        做了深拷贝：Agent 拿到的是当时的样子，后面怎么改都影响不到编排器。
         """
         return json.loads(json.dumps(self._data, ensure_ascii=False))
 

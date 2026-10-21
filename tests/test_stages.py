@@ -1,7 +1,7 @@
 """阶段与合并逻辑（stages.py）的测试。
 
 ``merge_reviews`` 是并行审查的合并点，也是最容易写错的地方（去重、重算、取最差值）。
-它是纯函数，所以可以直接单测 —— 这是刻意把它设计成纯函数的原因。
+做成纯函数就是为了能直接单测。
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ def test_merge_dedupes_by_finding_id() -> None:
 
 
 def test_merge_recomputes_counts_not_sum() -> None:
-    """counts 必须由合并后的清单重算，而不是各分片相加。"""
+    """counts 得由合并后的清单重算，不能拿各分片的数字直接相加。"""
     merged = merge_reviews(
         [
             _payload([finding("CG106", "high", 10)]),
@@ -109,11 +109,9 @@ def test_pipeline_max_rounds_validation() -> None:
 
 # 并行 fan-out
 def test_review_fanout_merges_shards() -> None:
-    """
-    多文件时审查阶段应**按文件并行 fan-out**，并把分片结果确定性合并。
+    """多文件时审查阶段应该按文件并行 fan-out，分片结果再确定性合并。
 
-    这条路径之前没有被覆盖：演示工程只有一个源文件，`_review_many` 从来没被走到。
-    并行是作业的"推荐实现"之一，必须真的测到。
+    这条路径以前没被覆盖过：演示工程只有一个源文件，``_review_many`` 从来没走到过。
     """
     from workflow.config import WorkflowConfig
     from workflow.context import RunContext

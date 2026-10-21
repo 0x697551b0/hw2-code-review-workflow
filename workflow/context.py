@@ -1,18 +1,11 @@
-"""
-RunContext：一次运行中所有节点共享的执行环境。
+"""RunContext：一次运行里所有节点共享的执行环境。
 
-把"配置 / 状态 / 总线 / 事件 / 注册表 / 阶段记录"打包成一个上下文对象，是为了让节点
-只声明自己真正需要的东西（``ctx.call_agent("review", ...)``），而不是每个节点都去
-自己拼装。这也是节点能保持"薄"的原因。
+配置、状态、总线、事件、注册表、阶段记录都塞在这一个对象里，节点直接
+``ctx.call_agent("review", ...)``，不用自己拼装。
 
-``child()`` 派生出的子上下文共享全部基础设施，只改 ``path`` 与 ``depth`` —— 路径编码
-了节点在流程树中的位置（例如 ``pipeline/1/review-fix-loop#2/0:review``），它同时是
-
-- 事件日志里的定位符，
-- resume 时的完成标记（``state.completed``），
-- 循环游标的键。
-
-一份标识三处用，避免三套命名各说各话。
+``child()`` 派生的子上下文共享这些基础设施，只改 ``path`` 和 ``depth``。path 编码了节点
+在流程树里的位置（比如 ``pipeline/1/review-fix-loop#2/0:review``），事件日志定位、resume
+的完成标记（``state.completed``）、循环游标都用它，一个标识三处用。
 """
 
 from __future__ import annotations
@@ -118,12 +111,10 @@ class RunContext:
         payload: dict[str, Any] | None = None,
         settings_name: str = "",
     ) -> AgentResponse:
-        """
-        调用一个 Agent，并处理重试与观测。
+        """调用一个 Agent，顺带处理重试和事件记录。
 
-        这是整个编排器唯一的"Agent 出入口"。所有横切关注点（事件、重试、超时、共享
-        状态快照、失败策略）都集中在这里，节点因此不需要各写一遍 —— 也让"新增一个
-        存储节点""加一个告警节点"这类扩展变得便宜。
+        整个编排器只有这一个 Agent 出入口，事件、重试、超时、状态快照、失败策略都收在
+        这一处，节点里不用各写一遍。
         """
         handle: AgentHandle = self.registry.get(name)
         settings = handle.settings
@@ -205,13 +196,7 @@ class RunContext:
 
     # 存档
     def checkpoint(self, *, force: bool = False) -> None:
-        """
-        存档。
-
-        除了业务状态，还顺手把**阶段记录**与**总线消息**写进存档的 meta。理由很实际：
-        断点续跑后如果这两样东西还是空的，最终报告里的"阶段耗时""Agent 消息传递"两节
-        会一片空白 —— 而它们正是"执行日志与状态追踪"这项要求的直接体现。两份 JSON 很便宜。
-        """
+        """写存档。阶段记录和总线消息也一起存，不然 resume 之后报告里那两节是空的。"""
         if not self.config.checkpoint:
             return
         path = self.state.checkpoint_path

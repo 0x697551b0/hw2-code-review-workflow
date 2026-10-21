@@ -1,15 +1,9 @@
-"""
-报告生成：Markdown（给人读 / 进版本库）与 HTML（给演示看）。
+"""报告生成：Markdown（给人读、进版本库）和 HTML（给演示看）。
 
-三项设计取舍：
-
-1. **零依赖、可离线打开**。HTML 不引用任何 CDN，样式与图表全部内联用 CSS 画。
-   演示电脑断网、评审者只下载一个文件，都要能看。
-2. **机器可读的结构化数据单独存**（``run.json`` / ``review-rN/review.json``），
-   报告只是它的一个"渲染视图"。这样报告样式怎么改都不影响自动化断言。
-3. **流程图由流程树生成，不手画**。手画的图会和代码脱节，一周后就是谎话；
-   从 :meth:`workflow.nodes.Node.describe` 递归生成，改流程结构图自动跟着变。
-   同时输出 Mermaid（可贴进 GitHub / Typora）与 ASCII（终端里能看）。
+HTML 不引用任何 CDN，样式和图表全是内联 CSS，断网也能打开。结构化数据单独存
+（``run.json`` / ``review-rN/review.json``），报告只是它的一个渲染视图，改样式不会影响
+自动化断言。流程图从 :meth:`workflow.nodes.Node.describe` 递归生成，不手画，手画的图
+过一周就跟代码脱节了。Mermaid 和 ASCII 各出一份。
 """
 
 from __future__ import annotations
@@ -477,7 +471,10 @@ def write_final_reports(orchestrator: Any, outcome: RunOutcome) -> dict[str, Pat
 
 # 工具
 def _pipeline_description() -> dict[str, Any]:
-    """按默认配置生成流程树描述（只用于画图，不执行）。"""
+    """按默认配置生成流程树描述（只用于画图，不执行）。
+
+    # XXX: 这里的 max_rounds 写死 3，跑起来才按配置算，两者不一样时图上的轮数对不上
+    """
     from workflow.stages import build_pipeline
 
     return build_pipeline(max_rounds=3).describe()

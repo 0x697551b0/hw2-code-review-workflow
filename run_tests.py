@@ -1,14 +1,14 @@
-"""
-零依赖测试运行器：不装 pytest 也能跑完整测试套件。
+"""零依赖测试运行器。
+
+评审环境不一定装得上 pytest，所以自己扫 tests/test_*.py、找 test_ 开头的
+函数挨个调用。测试本身写成普通函数，装了 pytest 也能直接跑。
 
 用法：
-    python run_tests.py            # 跑全部
-    python run_tests.py -v         # 同时列出通过用例
-    python run_tests.py protocol   # 只跑文件名含 protocol 的用例
+    python run_tests.py            跑全部
+    python run_tests.py -v         顺带列出通过的用例
+    python run_tests.py protocol   只跑文件名含 protocol 的
 
-为什么要有它：作业的评审环境不一定装得上 pytest（甚至不一定能联网）。
-测试写成 ``test_xxx()`` 普通函数，**同时兼容 pytest**，两种方式都能跑。
-四个仓库里这个文件内容一致 —— 它是基础设施，不是业务代码，复制比抽象更省事。
+四个仓库里这份文件内容一样，改的时候记得一起改。
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ class Colors:
 
 
 def _utf8_console() -> None:
-    """Windows 控制台默认 GBK，中文/emoji 会抛 UnicodeEncodeError。"""
+    """Windows 控制台是 GBK，输出中文会炸，先切到 UTF-8。"""
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:

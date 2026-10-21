@@ -1,8 +1,7 @@
 """消息总线（bus.py）的测试。
 
-其中 ``test_directed_subscriber_receives_broadcast`` 是回归测试：这里曾经把
-"广播"和"定向"的判断写反过，结果是定向订阅者永远收不到广播消息 ——
-一个"订阅上了但收不到"的静默错误。
+``test_directed_subscriber_receives_broadcast`` 是回归测试：这里以前把"广播"和"定向"
+的判断写反了，定向订阅者永远收不到广播消息，而且一声不响。
 """
 
 from __future__ import annotations
@@ -92,7 +91,7 @@ def test_message_ids_are_unique() -> None:
 
 
 def test_subscriber_exception_does_not_break_publish() -> None:
-    """订阅者抛异常不能拖垮发布方 —— 否则一个坏扩展点就能让整条流水线停摆。"""
+    """订阅者抛异常不能拖垮发布方，不然一个坏扩展点就能让整条流水线停摆。"""
     bus = MessageBus()
     received: list[Message] = []
 

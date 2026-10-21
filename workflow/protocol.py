@@ -1,20 +1,13 @@
-"""
-Agent 契约：Workflow 编排器与各 Agent 之间**唯一**的通信边界。
+"""Agent 契约：编排器和各 Agent 之间唯一的通信边界。
 
-为什么把契约定义成一个"信封"（envelope）：
+三个 Agent 都是独立仓库、独立包，编排器不去 import 它们的内部类型，双方只共享这一个
+JSON 信封，所以谁换实现另一边都不用改。信封既能走函数调用，也能走 stdin/stdout，还能
+落盘当运行存档；用 dataclass 承载只是为了校验和可读性，真正的传输形态一直是 dict/JSON。
+字段都有默认值，未知字段透传保留，新版 Agent 加字段不会让旧编排器崩掉。
 
-1. **零耦合**：三个 Agent 各自是一个独立仓库、独立包，编排器不应该 import 它们的
-   内部类型。双方只共享这一个 JSON 信封，一方换实现（甚至换成别的语言写的进程）
-   另一方不用改。
-2. **可序列化**：同一份信封既能走函数调用（进程内），也能走 stdin/stdout
-   （跨进程），还能落盘成为运行存档（checkpoint）。用 dataclass 承载只是为了
-   校验与可读性，真正的传输形态永远是 dict/JSON。
-3. **可演进**：所有字段都有默认值，未知字段透传保留，因此新版 Agent 增加字段不会
-   让旧编排器崩掉。
-
-这个文件在三个 Agent 仓库与编排器仓库中各有一份**等价副本**。这是刻意的重复：
-四个仓库必须能单独 clone、单独跑通，不能为了让四次 import 复用这 150 行而互相
-依赖。契约的权威定义写在编排器仓库的 `docs/CONTRACT.md`。
+这个文件在三个 Agent 仓库和编排器仓库里各有一份等价的副本。重复是故意的：四个仓库得能
+单独 clone、单独跑通，不能为了复用这 150 行而互相依赖。契约的权威定义在编排器仓库的
+`docs/CONTRACT.md`。
 """
 
 from __future__ import annotations
@@ -90,12 +83,10 @@ class Artifact:
 
 @dataclass
 class AgentRequest:
-    """
-    编排器 → Agent 的一次任务请求。
+    """编排器 → Agent 的一次任务请求。
 
-    payload 是 Agent 私有的业务参数，编排器不解释它；shared 是**只读**的共享状态
-    快照，让 Agent 了解上下文（例如修复 Agent 需要知道这是第几轮、上一轮改了什么）
-    但不必自己维护全局状态。
+    payload 是 Agent 私有的业务参数，编排器不解释它；shared 是只读的状态快照，让 Agent
+    知道这是第几轮、上一轮改了什么，但不用自己维护全局状态。
     """
 
     agent: str
@@ -223,15 +214,11 @@ class AgentResponse:
 
 @dataclass
 class FindingContract:
-    """
-    一条审查发现。**三个 Agent 共用**同一种发现结构：
+    """一条审查发现。三个 Agent 共用同一种结构。
 
-    - 审查 Agent 生产它；
-    - 修复 Agent 消费它，并把 ``status`` 更新为 fixed/deferred/rejected；
-    - 编排器用它做质量门禁与报告。
-
-    共享结构而不是让两边各自定义，是为了让"发现 → 修复 → 复验"可以按
-    ``finding_id`` 精确闭环。
+    审查 Agent 生产它，修复 Agent 消费它并把 ``status`` 更新成 fixed/deferred/rejected，
+    编排器拿它做质量门禁和报告。共用一个结构，才能按 ``finding_id`` 把"发现 → 修复 →
+    复验"串成闭环。
     """
 
     finding_id: str
