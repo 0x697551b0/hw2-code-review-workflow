@@ -180,7 +180,7 @@ info 级的 `CG307`（缺返回值类型注解）。`--transport subprocess` 同
 
 `plan --mermaid` 输出同一棵树的 Mermaid，完整输出 34 行，下面是前 10 行：
 
-```mermaid
+```text
 flowchart TD
     n1["⟲ 顺序 · pipeline"]
     n2["▭ prepare"]
